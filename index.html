@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fluxvent — Operational Intelligence SaaS</title>
+
+  <!-- Favicon SVG de Fluxvent -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>">
+
+  <!-- Tailwind CSS & Librerías -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] },
+          colors: {
+            brand: {
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #030712;
+      background-image: 
+        radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+        radial-gradient(at 90% 90%, rgba(79, 70, 229, 0.12) 0px, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Estilos para impresión de ticket térmico */
+    @page { size: 80mm auto; margin: 0; }
+    @media print {
+      body * { visibility: hidden; }
+      #seccion-ticket, #seccion-ticket * { visibility: visible; }
+      #seccion-ticket { position: absolute; left: 0; top: 0; width: 100%; padding: 12px; }
+    }
+  </style>
+</head>
+<body class="text-zinc-100 min-h-screen font-sans antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- MODAL DE AUTENTICACIÓN -->
+  <div id="modal-auth" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-2xl flex items-center justify-center p-4">
+    <div class="glass-panel rounded-3xl p-8 max-w-md w-full relative overflow-hidden border border-white/10 shadow-2xl">
+      <div class="absolute -top-20 -right-20 w-48 h-48 bg-brand-500/20 rounded-full blur-3xl pointer-events-none"></div>
+      
+      <!-- Header Logo con SVG del rayo vectorizado directo -->
+      <div class="flex items-center gap-3.5 mb-6">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 via-brand-500 to-indigo-400 flex items-center justify-center text-white shadow-xl shadow-brand-500/30">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <div>
+          <h2 class="font-black text-2xl tracking-tight text-white flex items-center gap-2">
+            Fluxvent
+            <span class="text-[9px] font-bold tracking-widest text-brand-400 bg-brand-500/10 border border-brand-500/20 px-2 py-0.5 rounded-full uppercase">SaaS</span>
+          </h2>
+          <p class="text-xs text-zinc-400 font-medium">Operational Intelligence Platform</p>
+        </div>
+      </div>
+
+      <!-- Selector Iniciar Sesión / Registrar -->
+      <div class="flex bg-zinc-950/80 border border-white/10 rounded-2xl p-1 mb-5">
+        <button id="tab-login" onclick="cambiarTabAuth('login')" class="flex-1 text-xs font-semibold py-2 rounded-xl transition bg-brand-600 text-white shadow-md">Iniciar Sesión</button>
+        <button id="tab-registro" onclick="cambiarTabAuth('registro')" class="flex-1 text-xs font-semibold py-2 rounded-xl transition text-zinc-400 hover:text-white">Registrar Negocio</button>
+      </div>
+
+      <div class="space-y-4">
+        <!-- Selector de Rol -->
+        <div id="container-rol">
+          <label class="text-[11px] text-zinc-400 font-semibold tracking-wider block mb-1">ACCEDER COMO</label>
+          <select id="auth-rol" class="w-full bg-zinc-950/80 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white focus:border-brand-500 focus:outline-none transition">
+            <option value="admin">Administrador (Acceso Total)</option>
+            <option value="cajero">Cajero (Solo Ventas POS)</option>
+          </select>
+        </div>
+
+        <!-- Campo Nombre de Empresa (Solo visible en Registro) -->
+        <div id="container-empresa" class="hidden">
+          <label class="text-[11px] text-zinc-400 font-semibold tracking-wider block mb-1">NOMBRE DE TU NEGOCIO</label>
+          <input type="text" id="auth-empresa" placeholder="Ej. Abarrotes Centro" class="w-full bg-zinc-950/80 border border-white/10 rounded-2xl px-4 py-3 text-xs focus:border-brand-500 focus:outline-none transition">
+        </div>
+
+        <div>
+          <label class="text-[11px] text-zinc-400 font-semibold tracking-wider block mb-1">CORREO ELECTRÓNICO</label>
+          <input type="email" id="auth-email" placeholder="correo@empresa.com" class="w-full bg-zinc-950/80 border border-white/10 rounded-2xl px-4 py-3 text-xs focus:border-brand-500 focus:outline-none transition">
+        </div>
+        
+        <div>
+          <label class="text-[11px] text-zinc-400 font-semibold tracking-wider block mb-1">CONTRASEÑA</label>
+          <input type="password" id="auth-password" placeholder="••••••••" class="w-full bg-zinc-950/80 border border-white/10 rounded-2xl px-4 py-3 text-xs focus:border-brand-500 focus:outline-none transition">
+        </div>
+
+        <div class="pt-2">
+          <button id="btn-submit-auth" onclick="iniciarSesion()" class="w-full bg-gradient-to-r from-brand-600 via-indigo-600 to-brand-500 hover:from-brand-500 hover:to-indigo-400 text-white font-bold text-xs py-3.5 rounded-2xl transition-all shadow-lg shadow-brand-500/30 flex items-center justify-center gap-2 group">
+            <span id="btn-submit-texto">Iniciar Sesión</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HEADER NAVEGACIÓN -->
+  <header class="border-b border-white/10 bg-zinc-950/40 backdrop-blur-2xl sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center font-bold text-white shadow-lg shadow-brand-500/25">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <div>
+          <h1 class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">Fluxvent</h1>
+          <p class="text-[10px] text-zinc-400 font-medium tracking-wide">Enterprise POS & Real-Time Analytics</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2.5 bg-zinc-900/80 border border-white/10 rounded-2xl px-4 py-2 text-xs">
+          <i data-lucide="store" class="w-4 h-4 text-brand-400"></i>
+          <strong id="nombre-empresa" class="text-white">Cargando...</strong>
+        </div>
+        <button onclick="cerrarSesion()" class="text-zinc-400 hover:text-red-400 transition text-xs flex items-center gap-1.5 bg-zinc-900 border border-white/10 px-3.5 py-2 rounded-2xl">
+          <i data-lucide="log-out" class="w-4 h-4"></i> Salir
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+    <!-- POS / CATÁLOGO (7 COLS) -->
+    <section class="lg:col-span-7 space-y-6">
+      
+      <div class="glass-panel rounded-3xl p-6 relative overflow-hidden">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 bg-brand-500/10 rounded-xl text-brand-400 border border-brand-500/20">
+              <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+            </div>
+            <h2 class="font-bold text-base">Catálogo de Productos</h2>
+          </div>
+          <button onclick="abrirModalProducto()" class="bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs px-3.5 py-2.5 rounded-2xl transition flex items-center gap-1.5 shadow-lg shadow-brand-500/20">
+            <i data-lucide="plus" class="w-4 h-4"></i> Agregar Producto
+          </button>
+        </div>
+
+        <div class="relative mb-5">
+          <i data-lucide="search" class="w-4 h-4 absolute left-4 top-3.5 text-zinc-500"></i>
+          <input type="text" id="input-buscar" oninput="filtrarProductos()" placeholder="Buscar por nombre o código de barras..." class="w-full bg-zinc-950/80 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 transition">
+        </div>
+
+        <div id="grid-productos" class="grid grid-cols-2 sm:grid-cols-3 gap-3.5 max-h-[360px] overflow-y-auto pr-1"></div>
+      </div>
+
+      <!-- CARRITO / POS -->
+      <div class="glass-panel rounded-3xl p-6 flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
+          <h3 class="font-bold text-sm flex items-center gap-2">
+            <i data-lucide="shopping-cart" class="w-4 h-4 text-brand-400"></i> Ticket de Venta Actual
+          </h3>
+          <button onclick="vaciarCarrito()" class="text-xs text-zinc-500 hover:text-red-400 transition">Vaciar ticket</button>
+        </div>
+
+        <div class="min-h-[140px] max-h-[180px] overflow-y-auto mb-4">
+          <table class="w-full text-left text-xs">
+            <thead class="text-zinc-500 border-b border-white/5">
+              <tr>
+                <th class="pb-2 font-medium">Producto</th>
+                <th class="pb-2 text-center font-medium">Cant.</th>
+                <th class="pb-2 text-right font-medium">Subtotal</th>
+                <th class="pb-2"></th>
+              </tr>
+            </thead>
+            <tbody id="tabla-carrito" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+
+        <div class="border-t border-white/10 pt-4 flex items-center justify-between">
+          <div>
+            <p class="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">TOTAL A COBRAR</p>
+            <p id="total-ticket" class="text-3xl font-black text-white">$0.00 <span class="text-xs font-normal text-zinc-500">MXN</span></p>
+          </div>
+          <button onclick="procesarVenta()" id="btn-cobrar" disabled class="bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-xs px-7 py-3.5 rounded-2xl transition shadow-xl shadow-brand-500/25 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2">
+            <i data-lucide="check-circle" class="w-4 h-4"></i> Procesar Venta (POS)
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- DASHBOARD (5 COLS) -->
+    <section class="lg:col-span-5 space-y-6">
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="glass-panel rounded-3xl p-5">
+          <p class="text-xs text-zinc-400 font-medium">Ventas de Hoy</p>
+          <h4 id="kpi-ventas-hoy" class="text-2xl font-black text-emerald-400 mt-1">$0.00</h4>
+          <span class="text-[10px] text-zinc-500">Sincronizado en tiempo real</span>
+        </div>
+        <div class="glass-panel rounded-3xl p-5">
+          <p class="text-xs text-zinc-400 font-medium">Stock Bajo</p>
+          <h4 id="kpi-stock-bajo" class="text-2xl font-black text-amber-400 mt-1">0 items</h4>
+          <span class="text-[10px] text-zinc-500">Rebasan límite mínimo</span>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-3xl p-6">
+        <h3 class="font-bold text-sm mb-4 flex items-center gap-2">
+          <i data-lucide="bar-chart-3" class="w-4 h-4 text-brand-400"></i> Rendimiento de Ventas
+        </h3>
+        <div class="h-[200px] w-full">
+          <canvas id="graficaVentas"></canvas>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-3xl p-6">
+        <h3 class="font-bold text-sm mb-3 flex items-center gap-2">
+          <i data-lucide="receipt" class="w-4 h-4 text-brand-400"></i> Historial de Tickets Emitidos
+        </h3>
+        <div id="lista-ultimas-ventas" class="space-y-2 max-h-[160px] overflow-y-auto text-xs"></div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL GESTIÓN PRODUCTO -->
+  <div id="modal-producto" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-panel rounded-3xl p-6 max-w-md w-full space-y-4">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <h3 id="modal-producto-titulo" class="font-bold text-base">Agregar Producto</h3>
+        <button onclick="cerrarModalProducto()" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <input type="hidden" id="prod-id">
+      <div>
+        <label class="text-xs text-zinc-400 font-medium block mb-1">Nombre del Producto</label>
+        <input type="text" id="prod-nombre" class="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-brand-500 focus:outline-none">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-zinc-400 font-medium block mb-1">Precio ($ MXN)</label>
+          <input type="number" step="0.01" id="prod-precio" class="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-brand-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-xs text-zinc-400 font-medium block mb-1">Stock Inicial</label>
+          <input type="number" id="prod-stock" class="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-brand-500 focus:outline-none">
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-zinc-400 font-medium block mb-1">Código de Barras</label>
+        <input type="text" id="prod-codigo" class="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-brand-500 focus:outline-none">
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button onclick="cerrarModalProducto()" class="flex-1 bg-zinc-800 text-xs py-2.5 rounded-xl font-semibold">Cancelar</button>
+        <button onclick="guardarProducto()" class="flex-1 bg-brand-600 hover:bg-brand-500 text-xs py-2.5 rounded-xl font-semibold text-white shadow-lg shadow-brand-500/20">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TICKET TÉRMICO -->
+  <div id="seccion-ticket" class="hidden p-4 max-w-xs mx-auto bg-white text-black font-mono text-xs">
+    <div class="text-center mb-3">
+      <h2 id="ticket-nombre-empresa" class="font-bold text-sm uppercase">FLUXVENT POS</h2>
+      <p id="ticket-fecha" class="text-[10px] text-gray-600"></p>
+      <p id="ticket-folio" class="text-[10px] font-bold mt-1"></p>
+    </div>
+    <div class="border-t border-b border-black py-2 mb-2">
+      <div id="ticket-items" class="space-y-1"></div>
+    </div>
+    <div class="text-right font-bold text-sm">
+      TOTAL: $<span id="ticket-total">0.00</span> MXN
+    </div>
+    <div class="text-center mt-5 text-[10px] border-t border-dashed border-black pt-2">
+      ¡Gracias por su compra!
+    </div>
+  </div>
+
+  <!-- Script Lógica JavaScript -->
+  <script src="app.js"></script>
+
+  <script>
+    function cambiarTabAuth(modo) {
+      const containerEmpresa = document.getElementById('container-empresa');
+      const containerRol = document.getElementById('container-rol');
+      const tabLogin = document.getElementById('tab-login');
+      const tabRegistro = document.getElementById('tab-registro');
+      const btnSubmit = document.getElementById('btn-submit-auth');
+      const btnTexto = document.getElementById('btn-submit-texto');
+
+      if (modo === 'login') {
+        containerEmpresa.classList.add('hidden');
+        containerRol.classList.remove('hidden');
+        tabLogin.className = "flex-1 text-xs font-semibold py-2 rounded-xl transition bg-brand-600 text-white shadow-md";
+        tabRegistro.className = "flex-1 text-xs font-semibold py-2 rounded-xl transition text-zinc-400 hover:text-white";
+        if (btnTexto) btnTexto.textContent = "Iniciar Sesión";
+        btnSubmit.onclick = iniciarSesion;
+      } else {
+        containerEmpresa.classList.remove('hidden');
+        containerRol.classList.add('hidden');
+        tabRegistro.className = "flex-1 text-xs font-semibold py-2 rounded-xl transition bg-brand-600 text-white shadow-md";
+        tabLogin.className = "flex-1 text-xs font-semibold py-2 rounded-xl transition text-zinc-400 hover:text-white";
+        if (btnTexto) btnTexto.textContent = "Registrar Negocio";
+        btnSubmit.onclick = registrarEmpresa;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
